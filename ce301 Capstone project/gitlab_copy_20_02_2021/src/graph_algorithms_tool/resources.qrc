@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>resources/tutorial/book pic.jpg</file>
+        <file>resources/tutorial/resizable_window.gif</file>
+        <file>resources/tutorial/test.gif</file>
+        <file>resources/tutorial/authors.png</file>
+    </qresource>
+</RCC>
