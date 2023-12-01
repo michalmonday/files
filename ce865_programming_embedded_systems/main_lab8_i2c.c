@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -80,6 +80,24 @@ void MX_USB_HOST_Process(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+uint8_t Device_Addr = 0xA6;
+uint8_t MAIN_CTRL = 0x00;
+uint8_t Register_Addr0 = 0x0D;
+uint8_t Register_Addr1 = 0x0E;
+uint8_t Register_Addr2 = 0x0F;
+uint8_t data0, data1, data2;
+uint8_t buf[30] = { 0x00 };
+
+float read_light_sensor() {
+	uint32_t als;
+	float lux;
+	HAL_I2C_Mem_Read(&hi2c2, Device_Addr, Register_Addr0, I2C_MEMADD_SIZE_8BIT, &data0, 1, HAL_MAX_DELAY);
+	HAL_I2C_Mem_Read(&hi2c2, Device_Addr, Register_Addr1, I2C_MEMADD_SIZE_8BIT, &data1, 1, HAL_MAX_DELAY);
+	HAL_I2C_Mem_Read(&hi2c2, Device_Addr, Register_Addr2, I2C_MEMADD_SIZE_8BIT, &data2, 1, HAL_MAX_DELAY);
+	als = (data2<<16)|(data1<<8)|data0;
+	lux = als * 0.6; //Lux=0.6*ALS/(GAIN*INT)*WindowFactor
+	return lux;
+}
 /* USER CODE END 0 */
 
 /**
@@ -120,35 +138,75 @@ int main(void)
   MX_USB_HOST_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  uint8_t Device_Addr = 0xA6;
-  uint8_t MAIN_CTRL = 0x00;
-  uint8_t Register_Addr0 = 0x0D;
-  uint8_t Register_Addr1 = 0x0E;
-  uint8_t Register_Addr2 = 0x0F;
-  uint8_t buf[30] = { 0x00 };
-  uint8_t data0, data1, data2;
-  uint32_t als;
-  float lux;
+
   buf[0] = 0x02; //ALS enable
   HAL_I2C_Mem_Write(&hi2c2, Device_Addr, MAIN_CTRL, I2C_MEMADD_SIZE_8BIT, buf,
   		1, HAL_MAX_DELAY);
   HAL_Delay(10); //wait for sensor to start
 
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  int32_t CH1_DC = 0;
+  bool pwm_enabled = false;
+  uint32_t period = htim2.Init.Period;
+  int to_add = 200;
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  const float lux_top = 2200;
+
   while (1) {
-	HAL_I2C_Mem_Read(&hi2c2, Device_Addr, Register_Addr0, I2C_MEMADD_SIZE_8BIT, &data0, 1, HAL_MAX_DELAY);
-    HAL_I2C_Mem_Read(&hi2c2, Device_Addr, Register_Addr1, I2C_MEMADD_SIZE_8BIT, &data1, 1, HAL_MAX_DELAY);
-    HAL_I2C_Mem_Read(&hi2c2, Device_Addr, Register_Addr2, I2C_MEMADD_SIZE_8BIT, &data2, 1, HAL_MAX_DELAY);
-    als = (data2<<16)|(data1<<8)|data0;
-    lux = als * 0.6; //Lux=0.6*ALS/(GAIN*INT)*WindowFactor
-    HAL_Delay (100); //default 18bits conversion time =100ms
-    lux *= 100;
-    sprintf(buf,"%u.%u lux\r\n",((unsigned int)lux/100),((unsigned int)lux%100));
+	float lux = read_light_sensor();
+	sprintf(buf,"%.2f lux\r\n", lux);
     HAL_UART_Transmit(&huart2, (uint8_t *)buf, sizeof(buf), HAL_MAX_DELAY);
     HAL_Delay (100);
+
+    // turn lux into pulse
+    // lux seems to be around 2200 in a well lit room, and 100k when under flashlight
+    TIM2->CCR1 = lux / lux_top * period;
+
+//	if (pwm_enabled) {
+//		CH1_DC += to_add;
+//		if (CH1_DC >= period) {
+//			CH1_DC = period;
+//			if (to_add > 0)
+//				to_add *= -1;
+//		} else if (CH1_DC <= 0) {
+//			CH1_DC = 0;
+//			if (to_add < 0)
+//				to_add *= -1;
+//		}
+//		TIM2->CCR1 = CH1_DC;
+//		HAL_Delay(1);
+//	}
+//
+//	switch (GetButtonPressed()) {
+//		case BUTTON1: {
+//			pwm_enabled = true;
+//			break;
+//		}
+//		case BUTTON2: {
+//			if (abs(to_add) > 1)
+//				to_add /= 2;
+//
+//			while (GetButtonPressed());
+//			break;
+//		}
+//		case BUTTON3: {
+//			if (abs(to_add) < period/2)
+//				to_add *= 2;
+//			while (GetButtonPressed());
+//			break;
+//		}
+//		case BUTTON4: {
+//			pwm_enabled = false;
+//			break;
+//		}
+//	}
+//
 
     /* USER CODE END WHILE */
     MX_USB_HOST_Process();
